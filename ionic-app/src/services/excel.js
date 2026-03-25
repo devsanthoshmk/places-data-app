@@ -63,7 +63,7 @@ export async function makeExcel(data, query) {
       notifications: [
         {
           title: 'Download Complete',
-          body: `${filename} saved to Downloads`,
+          body: `${filename} saved to Documents`,
           id: Date.now() % 2147483647,
           actionTypeId: 'DOWNLOAD_COMPLETE',
         },
