@@ -136,7 +136,39 @@ jobs:
               exit 1
             fi
 
-            BUILD_TOOLS_DIR=$(ls -d "$ANDROID_HOME"/build-tools/* | sort -V | tail -1)
+            LATEST_BUILD_TOOLS=$(python - <<'PY'
+            import os
+            import re
+            import sys
+
+            root = os.path.join(os.environ.get("ANDROID_HOME", ""), "build-tools")
+            try:
+                versions = [name for name in os.listdir(root) if os.path.isdir(os.path.join(root, name))]
+            except FileNotFoundError:
+                versions = []
+
+            if not versions:
+                sys.exit(1)
+
+            def version_key(v: str):
+                nums = [int(x) for x in re.findall(r'\d+', v)[:3]]
+                while len(nums) < 3:
+                    nums.append(0)
+                is_stable = 1 if re.fullmatch(r"\d+\.\d+\.\d+", v) else 0
+                return nums[0], nums[1], nums[2], is_stable, v
+
+            print(sorted(versions, key=version_key)[-1])
+            PY
+            )
+            if [ -z "$LATEST_BUILD_TOOLS" ]; then
+              echo "❌ ERROR: Android build-tools not found in $ANDROID_HOME/build-tools"
+              exit 1
+            fi
+            BUILD_TOOLS_DIR="$ANDROID_HOME/build-tools/$LATEST_BUILD_TOOLS"
+            if [ ! -x "$BUILD_TOOLS_DIR/zipalign" ] || [ ! -x "$BUILD_TOOLS_DIR/apksigner" ]; then
+              echo "❌ ERROR: Required tools not found in $BUILD_TOOLS_DIR"
+              exit 1
+            fi
             ALIGNED_APK="app/build/outputs/apk/release/app-release-aligned.apk"
             SIGNED_APK="app/build/outputs/apk/release/app-release.apk"
 
@@ -144,8 +176,8 @@ jobs:
             "$BUILD_TOOLS_DIR/apksigner" sign \
               --ks "$KEYSTORE_PATH" \
               --ks-key-alias "$ANDROID_KEY_ALIAS" \
-              --ks-pass "pass:$ANDROID_KEYSTORE_PASSWORD" \
-              --key-pass "pass:$ANDROID_KEY_PASSWORD" \
+              --ks-pass pass:env:ANDROID_KEYSTORE_PASSWORD \
+              --key-pass pass:env:ANDROID_KEY_PASSWORD \
               --out "$SIGNED_APK" \
               "$ALIGNED_APK"
             "$BUILD_TOOLS_DIR/apksigner" verify "$SIGNED_APK"
@@ -181,6 +213,14 @@ jobs:
           echo "apk_path=ionic-app/$APK_PATH" >> "$GITHUB_OUTPUT"
           echo "apk_type=$APK_TYPE" >> "$GITHUB_OUTPUT"
           echo "apk_name=GlobexData-$(echo ${{ github.ref_name || inputs.tag_name }})-$APK_TYPE.apk" >> "$GITHUB_OUTPUT"
+
+      - name: Cleanup signing material
+        if: always() && steps.signing.outputs.signing_enabled == 'true'
+        run: |
+          if [ -n "${{ steps.signing.outputs.keystore_path }}" ]; then
+            rm -f "${{ steps.signing.outputs.keystore_path }}"
+            echo "✅ Removed temporary keystore file"
+          fi
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
