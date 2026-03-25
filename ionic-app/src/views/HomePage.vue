@@ -228,7 +228,7 @@ import {
 import { Capacitor } from '@capacitor/core';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { search } from '../services/scraper.js';
-import { makeExcel, shareLastFile } from '../services/excel.js';
+import { makeExcel, shareLastFile, SaveToDownloads } from '../services/excel.js';
 
 let ForegroundService = null;
 
@@ -440,8 +440,6 @@ export default {
     },
     async openDownloadedFile() {
       try {
-        const { registerPlugin } = await import('@capacitor/core');
-        const SaveToDownloads = registerPlugin('SaveToDownloads');
         await SaveToDownloads.openFile({ uri: this.downloadedUri });
       } catch (error) {
         console.error('Open file error:', error);

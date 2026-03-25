@@ -88,4 +88,28 @@ public class SaveToDownloadsPlugin extends Plugin {
             call.reject("No app found to open this file: " + e.getMessage(), e);
         }
     }
+
+    @PluginMethod()
+    public void shareFile(PluginCall call) {
+        String uriString = call.getString("uri");
+        String filename = call.getString("filename", "file.xlsx");
+
+        if (uriString == null) {
+            call.reject("uri is required");
+            return;
+        }
+
+        try {
+            Uri uri = Uri.parse(uriString);
+            Intent intent = new Intent(Intent.ACTION_SEND);
+            intent.setType("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            intent.putExtra(Intent.EXTRA_STREAM, uri);
+            intent.putExtra(Intent.EXTRA_SUBJECT, filename);
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            getContext().startActivity(Intent.createChooser(intent, "Share " + filename));
+            call.resolve();
+        } catch (Exception e) {
+            call.reject("Failed to share file: " + e.getMessage(), e);
+        }
+    }
 }

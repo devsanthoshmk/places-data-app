@@ -1,9 +1,8 @@
 import writeXlsxFile from 'write-excel-file/browser';
 import { Capacitor, registerPlugin } from '@capacitor/core';
-import { Share } from '@capacitor/share';
 import { LocalNotifications } from '@capacitor/local-notifications';
 
-const SaveToDownloads = registerPlugin('SaveToDownloads');
+export const SaveToDownloads = registerPlugin('SaveToDownloads');
 
 const schema = [
   { column: 'Name', type: String, value: (row) => row.title, width: 30 },
@@ -32,10 +31,7 @@ export function getLastSavedUri() {
 
 export async function shareLastFile(filename) {
   if (!savedFileUri) return;
-  await Share.share({
-    title: filename,
-    url: savedFileUri,
-  });
+  await SaveToDownloads.shareFile({ uri: savedFileUri, filename });
 }
 
 export async function makeExcel(data, query) {
