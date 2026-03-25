@@ -136,30 +136,7 @@ jobs:
               exit 1
             fi
 
-            LATEST_BUILD_TOOLS=$(python - <<'PY'
-            import os
-            import re
-            import sys
-
-            root = os.path.join(os.environ.get("ANDROID_HOME", ""), "build-tools")
-            try:
-                versions = [name for name in os.listdir(root) if os.path.isdir(os.path.join(root, name))]
-            except FileNotFoundError:
-                versions = []
-
-            if not versions:
-                sys.exit(1)
-
-            def version_key(v: str):
-                nums = [int(x) for x in re.findall(r'\d+', v)[:3]]
-                while len(nums) < 3:
-                    nums.append(0)
-                is_stable = 1 if re.fullmatch(r"\d+\.\d+\.\d+", v) else 0
-                return nums[0], nums[1], nums[2], is_stable, v
-
-            print(sorted(versions, key=version_key)[-1])
-            PY
-            )
+            LATEST_BUILD_TOOLS=$(ls -1 "$ANDROID_HOME/build-tools" 2>/dev/null | sort -V | tail -n 1)
             if [ -z "$LATEST_BUILD_TOOLS" ]; then
               echo "❌ ERROR: Android build-tools not found in $ANDROID_HOME/build-tools"
               exit 1
