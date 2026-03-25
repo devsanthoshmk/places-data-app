@@ -50,6 +50,7 @@ jobs:
     outputs:
       apk_path: ${{ steps.find_apk.outputs.apk_path }}
       apk_name: ${{ steps.find_apk.outputs.apk_name }}
+      apk_type: ${{ steps.find_apk.outputs.apk_type }}
 
     steps:
       - name: Checkout code
@@ -95,28 +96,131 @@ jobs:
           echo "::endgroup::"
           echo "✅ Capacitor sync complete"
 
-      - name: Build release APK
-        working-directory: ionic-app/android
+      - name: Prepare Android signing material
+        id: signing
+        working-directory: .
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
-          echo "::group::gradle assembleRelease"
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ] && [ -n "$ANDROID_KEYSTORE_PASSWORD" ] && [ -n "$ANDROID_KEY_ALIAS" ] && [ -n "$ANDROID_KEY_PASSWORD" ]; then
+            KEYSTORE_PATH="$RUNNER_TEMP/release.keystore"
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 -d > "$KEYSTORE_PATH"
+            echo "signing_enabled=true" >> "$GITHUB_OUTPUT"
+            echo "keystore_path=$KEYSTORE_PATH" >> "$GITHUB_OUTPUT"
+            echo "✅ Release signing is enabled"
+          else
+            echo "signing_enabled=false" >> "$GITHUB_OUTPUT"
+            echo "⚠️ Release signing secrets not found, workflow will publish a debug APK fallback"
+          fi
+
+      - name: Build APK (signed release or debug fallback)
+        working-directory: ionic-app/android
+        env:
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+          KEYSTORE_PATH: ${{ steps.signing.outputs.keystore_path }}
+        run: |
           chmod +x gradlew
-          ./gradlew assembleRelease --no-daemon --stacktrace 2>&1
-          echo "::endgroup::"
-          echo "✅ APK build complete"
+          if [ "${{ steps.signing.outputs.signing_enabled }}" = "true" ]; then
+            echo "::group::gradle assembleRelease"
+            ./gradlew assembleRelease --no-daemon --stacktrace 2>&1
+            echo "::endgroup::"
+
+            UNSIGNED_APK="app/build/outputs/apk/release/app-release-unsigned.apk"
+            if [ ! -f "$UNSIGNED_APK" ]; then
+              echo "❌ ERROR: Expected unsigned release APK not found at $UNSIGNED_APK"
+              exit 1
+            fi
+
+            LATEST_BUILD_TOOLS=$(python - <<'PY'
+            import os
+            import re
+            import sys
+
+            root = os.path.join(os.environ.get("ANDROID_HOME", ""), "build-tools")
+            try:
+                versions = [name for name in os.listdir(root) if os.path.isdir(os.path.join(root, name))]
+            except FileNotFoundError:
+                versions = []
+
+            if not versions:
+                sys.exit(1)
+
+            def version_key(v: str):
+                nums = [int(x) for x in re.findall(r'\d+', v)[:3]]
+                while len(nums) < 3:
+                    nums.append(0)
+                is_stable = 1 if re.fullmatch(r"\d+\.\d+\.\d+", v) else 0
+                return nums[0], nums[1], nums[2], is_stable, v
+
+            print(sorted(versions, key=version_key)[-1])
+            PY
+            )
+            if [ -z "$LATEST_BUILD_TOOLS" ]; then
+              echo "❌ ERROR: Android build-tools not found in $ANDROID_HOME/build-tools"
+              exit 1
+            fi
+            BUILD_TOOLS_DIR="$ANDROID_HOME/build-tools/$LATEST_BUILD_TOOLS"
+            if [ ! -x "$BUILD_TOOLS_DIR/zipalign" ] || [ ! -x "$BUILD_TOOLS_DIR/apksigner" ]; then
+              echo "❌ ERROR: Required tools not found in $BUILD_TOOLS_DIR"
+              exit 1
+            fi
+            ALIGNED_APK="app/build/outputs/apk/release/app-release-aligned.apk"
+            SIGNED_APK="app/build/outputs/apk/release/app-release.apk"
+
+            "$BUILD_TOOLS_DIR/zipalign" -f -p 4 "$UNSIGNED_APK" "$ALIGNED_APK"
+            "$BUILD_TOOLS_DIR/apksigner" sign \
+              --ks "$KEYSTORE_PATH" \
+              --ks-key-alias "$ANDROID_KEY_ALIAS" \
+              --ks-pass pass:env:ANDROID_KEYSTORE_PASSWORD \
+              --key-pass pass:env:ANDROID_KEY_PASSWORD \
+              --out "$SIGNED_APK" \
+              "$ALIGNED_APK"
+            "$BUILD_TOOLS_DIR/apksigner" verify "$SIGNED_APK"
+            echo "✅ Signed release APK build complete"
+          else
+            echo "::group::gradle assembleDebug"
+            ./gradlew assembleDebug --no-daemon --stacktrace 2>&1
+            echo "::endgroup::"
+            echo "✅ Debug APK build complete"
+          fi
 
       - name: Locate APK
         id: find_apk
         run: |
-          APK_PATH=$(find android/app/build/outputs/apk/release -name '*.apk' | head -1)
+          APK_PATH=""
+          APK_TYPE=""
+
+          if [ "${{ steps.signing.outputs.signing_enabled }}" = "true" ] && [ -f "android/app/build/outputs/apk/release/app-release.apk" ]; then
+            APK_PATH="android/app/build/outputs/apk/release/app-release.apk"
+            APK_TYPE="signed-release"
+          elif [ -f "android/app/build/outputs/apk/debug/app-debug.apk" ]; then
+            APK_PATH="android/app/build/outputs/apk/debug/app-debug.apk"
+            APK_TYPE="debug-fallback"
+          fi
+
           if [ -z "$APK_PATH" ]; then
-            echo "❌ ERROR: No APK found in android/app/build/outputs/apk/release/"
+            echo "❌ ERROR: No APK found in expected output folders"
             find android/app/build/outputs/ -name '*.apk' 2>/dev/null || echo "No APK files found anywhere"
             exit 1
           fi
           APK_SIZE=$(du -h "$APK_PATH" | cut -f1)
-          echo "✅ APK found: $APK_PATH ($APK_SIZE)"
+          echo "✅ APK found ($APK_TYPE): $APK_PATH ($APK_SIZE)"
           echo "apk_path=ionic-app/$APK_PATH" >> "$GITHUB_OUTPUT"
-          echo "apk_name=GlobexData-$(echo ${{ github.ref_name || inputs.tag_name }}).apk" >> "$GITHUB_OUTPUT"
+          echo "apk_type=$APK_TYPE" >> "$GITHUB_OUTPUT"
+          echo "apk_name=GlobexData-$(echo ${{ github.ref_name || inputs.tag_name }})-$APK_TYPE.apk" >> "$GITHUB_OUTPUT"
+
+      - name: Cleanup signing material
+        if: always() && steps.signing.outputs.signing_enabled == 'true'
+        run: |
+          if [ -n "${{ steps.signing.outputs.keystore_path }}" ]; then
+            rm -f "${{ steps.signing.outputs.keystore_path }}"
+            echo "✅ Removed temporary keystore file"
+          fi
 
       - name: Upload APK artifact
         uses: actions/upload-artifact@v4
@@ -170,7 +274,7 @@ jobs:
             ## GlobexData ${{ steps.tag.outputs.tag }}
 
             ### Downloads
-            - **Android APK** — Install directly on your Android device
+            - **Android APK** — ${{ needs.build-android.outputs.apk_type == 'signed-release' && 'Signed release build (recommended)' || 'Debug fallback build (installable, but not for production distribution)' }}
 
             ### What's included
             - Google Places data scraper
