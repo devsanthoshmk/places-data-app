@@ -1,0 +1,11 @@
+{
+  "name": "places-data-app",
+  "private": true,
+  "scripts": {
+    "dev": "cd ionic-app && npx vite",
+    "build": "cd ionic-app && npx vite build",
+    "serve": "cd ionic-app && ionic serve",
+    "cap:sync": "cd ionic-app && npx cap sync",
+    "cap:android": "cd ionic-app && ionic cap run android"
+  }
+}
