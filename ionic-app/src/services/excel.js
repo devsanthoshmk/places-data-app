@@ -48,11 +48,11 @@ export async function makeExcel(data, query) {
   if (Capacitor.isNativePlatform()) {
     const base64 = await blobToBase64(blob);
 
-    // Save to Downloads directory so it's accessible from file manager
+    // Save to app's documents directory (works on all Android versions without special permissions)
     const result = await Filesystem.writeFile({
-      path: `Download/${filename}`,
+      path: filename,
       data: base64,
-      directory: Directory.ExternalStorage,
+      directory: Directory.Documents,
       recursive: true,
     });
 
