@@ -153,8 +153,8 @@ jobs:
             "$BUILD_TOOLS_DIR/apksigner" sign \
               --ks "$KEYSTORE_PATH" \
               --ks-key-alias "$ANDROID_KEY_ALIAS" \
-              --ks-pass pass:env:ANDROID_KEYSTORE_PASSWORD \
-              --key-pass pass:env:ANDROID_KEY_PASSWORD \
+              --ks-pass "pass:$ANDROID_KEYSTORE_PASSWORD" \
+              --key-pass "pass:$ANDROID_KEY_PASSWORD" \
               --out "$SIGNED_APK" \
               "$ALIGNED_APK"
             "$BUILD_TOOLS_DIR/apksigner" verify "$SIGNED_APK"
