@@ -1,8 +1,9 @@
 import writeXlsxFile from 'write-excel-file/browser';
-import { Capacitor } from '@capacitor/core';
-import { Filesystem, Directory } from '@capacitor/filesystem';
+import { Capacitor, registerPlugin } from '@capacitor/core';
 import { Share } from '@capacitor/share';
 import { LocalNotifications } from '@capacitor/local-notifications';
+
+const SaveToDownloads = registerPlugin('SaveToDownloads');
 
 const schema = [
   { column: 'Name', type: String, value: (row) => row.title, width: 30 },
@@ -48,12 +49,10 @@ export async function makeExcel(data, query) {
   if (Capacitor.isNativePlatform()) {
     const base64 = await blobToBase64(blob);
 
-    // Save to app's documents directory (works on all Android versions without special permissions)
-    const result = await Filesystem.writeFile({
-      path: filename,
+    // Save to Downloads using MediaStore API — no permissions needed on Android 10+
+    const result = await SaveToDownloads.save({
+      filename,
       data: base64,
-      directory: Directory.Documents,
-      recursive: true,
     });
 
     savedFileUri = result.uri;
@@ -63,7 +62,7 @@ export async function makeExcel(data, query) {
       notifications: [
         {
           title: 'Download Complete',
-          body: `${filename} saved to Documents`,
+          body: `${filename} saved to Downloads`,
           id: Date.now() % 2147483647,
           actionTypeId: 'DOWNLOAD_COMPLETE',
         },

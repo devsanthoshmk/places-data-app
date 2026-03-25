@@ -194,7 +194,7 @@
           <a href="https://github.com/devsanthoshmk" target="_blank" rel="noopener noreferrer" aria-label="GitHub">
             <ion-icon :icon="logoGithub"></ion-icon>
           </a>
-          <a href="https://www.linkedin.com/in/m-k-santhosh-689287258/" target="_blank" rel="noopener noreferrer" aria-label="LinkedIn">
+          <a href="https://www.linkedin.com/in/santhosh-m-k/" target="_blank" rel="noopener noreferrer" aria-label="LinkedIn">
             <ion-icon :icon="logoLinkedin"></ion-icon>
           </a>
           <a href="https://www.instagram.com/mksantho.sh/" target="_blank" rel="noopener noreferrer" aria-label="Instagram">
