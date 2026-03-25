@@ -34,3 +34,6 @@ npm-debug.log*
 # Signing
 release.keystore
 release.keystore.b64
+
+# Environment
+.env
