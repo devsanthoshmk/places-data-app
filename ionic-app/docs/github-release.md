@@ -4,7 +4,7 @@
 
 The release workflow automatically builds an Android APK and creates a GitHub Release when you push a version tag.
 
-**Workflow file:** `.github/workflows/release.yml`
+**Workflow file:** `<repo-root>/.github/workflows/release.yml` (at the repository root, not inside `ionic-app/`)
 
 ## How to Create a Release
 
@@ -103,8 +103,9 @@ Job 2: release (ubuntu-latest)
 ## Troubleshooting
 
 ### Build fails at Gradle step
-- Check that `android/` folder is committed to the repo
-- Ensure `android/gradle/wrapper/gradle-wrapper.jar` is committed (not in `.gitignore`)
+- Check that `ionic-app/android/` folder is committed to the repo
+- Ensure `ionic-app/android/gradle/wrapper/gradle-wrapper.jar` is committed (not in `.gitignore`)
+- The workflow sets `working-directory: ionic-app` — all commands run inside that folder
 
 ### No APK in release
 - Check the Actions log for the "Locate APK" step

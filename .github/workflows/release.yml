@@ -34,6 +34,7 @@ env:
   NODE_VERSION: '20'
   JAVA_VERSION: '21'
   JAVA_DISTRIBUTION: 'temurin'
+  WORKING_DIR: 'ionic-app'
 
 jobs:
   # ─────────────────────────────────────────────
@@ -42,6 +43,10 @@ jobs:
   build-android:
     name: Build Android APK
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ionic-app
+
     outputs:
       apk_path: ${{ steps.find_apk.outputs.apk_path }}
       apk_name: ${{ steps.find_apk.outputs.apk_name }}
@@ -55,6 +60,7 @@ jobs:
         with:
           node-version: ${{ env.NODE_VERSION }}
           cache: 'npm'
+          cache-dependency-path: ionic-app/package-lock.json
 
       - name: Set up JDK ${{ env.JAVA_VERSION }}
         uses: actions/setup-java@v4
@@ -90,7 +96,7 @@ jobs:
           echo "✅ Capacitor sync complete"
 
       - name: Build release APK
-        working-directory: android
+        working-directory: ionic-app/android
         run: |
           echo "::group::gradle assembleRelease"
           chmod +x gradlew
@@ -109,7 +115,7 @@ jobs:
           fi
           APK_SIZE=$(du -h "$APK_PATH" | cut -f1)
           echo "✅ APK found: $APK_PATH ($APK_SIZE)"
-          echo "apk_path=$APK_PATH" >> "$GITHUB_OUTPUT"
+          echo "apk_path=ionic-app/$APK_PATH" >> "$GITHUB_OUTPUT"
           echo "apk_name=GlobexData-$(echo ${{ github.ref_name || inputs.tag_name }}).apk" >> "$GITHUB_OUTPUT"
 
       - name: Upload APK artifact
