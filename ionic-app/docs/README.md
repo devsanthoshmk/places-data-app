@@ -12,7 +12,8 @@ A cross-platform mobile and web application that scrapes Google Places data and 
 | [Services API](./services-api.md) | Scraper and Excel service documentation |
 | [Android Configuration](./android-config.md) | Permissions, manifest, icons, foreground service |
 | [Build & Deploy](./build-deploy.md) | Building APKs, running on devices, scripts |
-| [GitHub Release](./github-release.md) | CI/CD workflow for automated releases |
+| [Releasing](./releasing.md) | How to tag, release, and publish APKs |
+| [GitHub Release](./github-release.md) | CI/CD workflow technical details |
 | [Troubleshooting](./troubleshooting.md) | Common issues and fixes |
 
 ## Quick Start
