@@ -32,9 +32,13 @@
           <ion-label>{{ row_datas.length }} results</ion-label>
         </ion-chip>
         <ion-buttons slot="end">
-          <ion-button @click="downloadExcel" color="success" fill="solid" size="small">
+          <ion-button v-if="!downloadedUri" @click="downloadExcel" color="success" fill="solid" size="small">
             <ion-icon :icon="downloadOutline" slot="start"></ion-icon>
             Download
+          </ion-button>
+          <ion-button v-else @click="openDownloadedFile" color="success" fill="solid" size="small">
+            <ion-icon :icon="openOutline" slot="start"></ion-icon>
+            Open
           </ion-button>
           <ion-button v-if="showShare" @click="shareFile" color="tertiary" fill="solid" size="small">
             <ion-icon :icon="shareSocialOutline" slot="start"></ion-icon>
@@ -246,6 +250,7 @@ export default {
       row_datas: [],
       showShare: false,
       lastFilename: '',
+      downloadedUri: null,
       filterText: '',
       sortBy: 'title',
       sortAsc: true,
@@ -351,6 +356,7 @@ export default {
       this.view = 'search';
       this.row_datas = [];
       this.showShare = false;
+      this.downloadedUri = null;
       this.filterText = '';
     },
     async doSearch() {
@@ -361,6 +367,7 @@ export default {
       }
       this.searching = true;
       this.showShare = false;
+      this.downloadedUri = null;
       await this.startForegroundService();
 
       if (Capacitor.isNativePlatform()) {
@@ -417,13 +424,31 @@ export default {
         this.lastFilename = result.filename;
         if (Capacitor.isNativePlatform()) {
           this.showShare = true;
+          this.downloadedUri = result.uri;
         }
         const toast = await toastController.create({
-          message: `Saved: ${result.filename}`, duration: 3000, position: 'bottom', color: 'success',
+          message: 'Saved in Downloads', duration: 3000, position: 'bottom', color: 'success',
         });
         await toast.present();
       } catch (error) {
         console.error('Download error:', error);
+        const toast = await toastController.create({
+          message: 'Download failed. Try again.', duration: 3000, position: 'bottom', color: 'danger',
+        });
+        await toast.present();
+      }
+    },
+    async openDownloadedFile() {
+      try {
+        const { registerPlugin } = await import('@capacitor/core');
+        const SaveToDownloads = registerPlugin('SaveToDownloads');
+        await SaveToDownloads.openFile({ uri: this.downloadedUri });
+      } catch (error) {
+        console.error('Open file error:', error);
+        const toast = await toastController.create({
+          message: 'No app found to open .xlsx files', duration: 3000, position: 'bottom', color: 'warning',
+        });
+        await toast.present();
       }
     },
     async shareFile() {

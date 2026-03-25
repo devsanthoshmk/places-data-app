@@ -1,6 +1,7 @@
 package com.globexdata.places;
 
 import android.content.ContentValues;
+import android.content.Intent;
 import android.net.Uri;
 import android.os.Build;
 import android.os.Environment;
@@ -63,6 +64,28 @@ public class SaveToDownloadsPlugin extends Plugin {
             call.resolve(ret);
         } catch (Exception e) {
             call.reject("Failed to save file: " + e.getMessage(), e);
+        }
+    }
+
+    @PluginMethod()
+    public void openFile(PluginCall call) {
+        String uriString = call.getString("uri");
+
+        if (uriString == null) {
+            call.reject("uri is required");
+            return;
+        }
+
+        try {
+            Uri uri = Uri.parse(uriString);
+            Intent intent = new Intent(Intent.ACTION_VIEW);
+            intent.setDataAndType(uri, "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+            intent.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION);
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(intent);
+            call.resolve();
+        } catch (Exception e) {
+            call.reject("No app found to open this file: " + e.getMessage(), e);
         }
     }
 }
