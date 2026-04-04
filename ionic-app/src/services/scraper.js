@@ -1,11 +1,21 @@
+import { JSDOM } from 'jsdom';
 import { parsePhoneNumberFromString } from 'libphonenumber-js';
 
-function extractPhone(text) {
-  const rawMatch = text.match(/(?:\+?\d{1,3}[-.\s]?)?\(?\d{1,4}\)?[-.\s]?\d{1,4}[-.\s]?\d{1,9}/);
-  if (!rawMatch) return '';
-  const phoneNumber = parsePhoneNumberFromString(rawMatch[0]);
-  if (phoneNumber && phoneNumber.isValid()) {
-    return phoneNumber.number;
+export function extractPhone(text) {
+  if (!text) return '';
+  
+  const phoneRegex = /(?:\+?\d{1,3}[-.\s]?)?\(?\d{1,4}\)?[-.\s]?\d{1,4}[-.\s]?\d{1,9}/g;
+  const matches = text.match(phoneRegex);
+  
+  if (!matches) return '';
+
+  for (const match of matches) {
+    if (match.replace(/\D/g, '').length < 8) continue;
+
+    const phoneNumber = parsePhoneNumberFromString(match, 'JP'); // Fallback region
+    if (phoneNumber && phoneNumber.isValid()) {
+      return phoneNumber.number;
+    }
   }
   return '';
 }
@@ -29,72 +39,121 @@ async function fetchit(url) {
     }
 
     const htmlText = await response.text();
-    const doc = new DOMParser().parseFromString(htmlText, 'text/html');
+    const dom = new JSDOM(htmlText);
+    const doc = dom.window.document;
 
     const items = doc.querySelector('#search')?.querySelectorAll('.VkpGBb');
-    if (!items) throw new Error('No items variable found');
+    if (!items) return []; 
+    
     const scrapedData = [];
 
     items.forEach((item) => {
-      const row = {};
+      const row = {
+        title: 'N/A',
+        stars: 0,
+        reviews: 0,
+        category: '',
+        address: '',
+        completePhoneNumber: '',
+        url: ''
+      };
 
       const titleEl = item.querySelector('[role="heading"]');
-      row.title = titleEl ? titleEl.textContent.trim().replace(/\r?\n/g, ' ').split(' ').filter(str => /\S/.test(str)).join(' ') : 'N/A';
+      if (titleEl) {
+        row.title = titleEl.textContent.replace(/\s+/g, ' ').trim();
+      }
 
+      // --- 1. NEW STRATEGY: ADDRESS FROM DIRECTIONS URL ---
+      const allLinks = Array.from(item.querySelectorAll('a'));
+      const directionsLink = allLinks.find(a => a.getAttribute('href')?.startsWith('/maps/dir/'));
+      
+      if (directionsLink) {
+        const href = directionsLink.getAttribute('href');
+        try {
+          // The URL format is /maps/dir//{Start}/{Destination}/data=...
+          // We split by /data=, take the first half, and grab the very last segment separated by /
+          const destSegment = href.split('/data=')[0].split('/').pop();
+          
+          if (destSegment) {
+            let fullAddress = decodeURIComponent(destSegment).replace(/\+/g, ' ').trim();
+            
+            // Clean up: Google usually attaches the Title to the start or end of this string. Let's slice it out.
+            if (row.title && row.title !== 'N/A') {
+              if (fullAddress.startsWith(row.title)) {
+                // Remove title from start, then strip any leading commas or spaces
+                fullAddress = fullAddress.substring(row.title.length).replace(/^[, \-]+/, '').trim();
+              } else if (fullAddress.endsWith(row.title)) {
+                // Remove title from end, then strip any trailing commas or spaces
+                fullAddress = fullAddress.substring(0, fullAddress.length - row.title.length).replace(/[, \-]+$/, '').trim();
+              }
+            }
+            row.address = fullAddress;
+          }
+        } catch (e) {
+          console.warn('Could not parse directions URL for address');
+        }
+      }
+
+      // --- 2. WEBSITE EXTRACTION ---
+      const websiteLink = allLinks.find(a => {
+        const linkText = a.textContent.toLowerCase();
+        return linkText.includes('website') && a.hasAttribute('href') && a.href.startsWith('http');
+      });
+
+      if (websiteLink) {
+        row.url = websiteLink.href;
+      }
+
+      // --- 3. TEXT PARSING (Reviews, Category, Phone, and Address Fallback) ---
       const detailsDiv = item.querySelector('.rllt__details');
-      row.stars = 0;
-      row.reviews = 0;
-      row.category = '';
-      row.address = '';
-      row.completePhoneNumber = '';
-
       if (detailsDiv) {
-        const lines = Array.from(detailsDiv.querySelectorAll('div'));
+        const lines = Array.from(detailsDiv.children); 
+        
         lines.forEach(line => {
-          const text = line.textContent.trim();
+          if (line.getAttribute('role') === 'heading' || line.querySelector('[role="heading"]')) return;
+
+          const text = line.textContent.replace(/\s+/g, ' ').trim();
+          if (!text) return;
 
           if (line.querySelector('[role="img"]') || text.match(/^\d\.\d/)) {
             const starSpan = line.querySelector('.yi40Hd') || line.querySelector('[aria-hidden="true"]');
-            if (starSpan) {
-              const val = parseFloat(starSpan.textContent);
-              if (!isNaN(val)) row.stars = val;
-            }
-            const reviewSpan = line.querySelector('[aria-label*="reviews"]');
-            if (reviewSpan) {
-              const count = parseInt(reviewSpan.textContent.replace(/\D/g, ''));
-              row.reviews = isNaN(count) ? 0 : count;
-            }
+            if (starSpan) row.stars = parseFloat(starSpan.textContent) || 0;
+            
+            const reviewSpan = line.querySelector('[aria-label*="reviews"]') || line.querySelector('.RDApEe');
+            if (reviewSpan) row.reviews = parseInt(reviewSpan.textContent.replace(/\D/g, '')) || 0;
+            
             if (text.includes('·')) {
-              const parts = text.split('·');
-              row.category = parts[parts.length - 1].trim();
+              row.category = text.split('·').pop().trim();
             }
-          } else if (text.length > 0) {
-            const segments = text.split('·').map(s => s.trim());
-            const lastSegment = segments[segments.length - 1];
-            const phone = extractPhone(lastSegment.trim().replace(/\r?\n/g, ' ').split(' ').filter(str => /\S/.test(str)).join(' '));
+            return;
+          }
+
+          const isStatusOrFeature = text.includes('Opens') || text.includes('Closed') || 
+                                    text.includes('Open 24 hours') || text.includes('Dine-in') || 
+                                    text.includes('Takeout') || text.includes('Delivery');
+          const isQuote = line.classList.contains('pJ3Ci');
+          if (isStatusOrFeature || isQuote) return;
+
+          const segments = text.split('·').map(s => s.trim());
+          segments.forEach(segment => {
+            if (segment.includes('years in business')) return;
+
+            const phone = extractPhone(segment);
+            const looksLikePhone = /^[\d\s\-\+\(\)]{8,}$/.test(segment);
+
             if (phone) {
               row.completePhoneNumber = phone;
-              if (segments.length > 1) {
-                const addressCandidate = segments[segments.length - 2];
-                if (!addressCandidate.includes('years in business') && !addressCandidate.includes('Open')) {
-                  row.address = addressCandidate.replace(/\s+/g, ' ').trim();
-                }
-              }
-            } else {
-              if (!text.includes('Opens') && !text.includes('Closed') && text.includes(',') && !row.address) {
-                row.address = text.replace(/\s+/g, ' ').trim();
-              }
+            } else if (!looksLikePhone && segment.length > 3 && !row.address) {
+              // Fallback: only set the address from text if the Directions link trick failed
+              row.address = segment;
             }
-          }
+          });
         });
       }
 
-      const allLinks = Array.from(item.querySelectorAll('a'));
-      const websiteLink = allLinks.find(link => link.textContent.includes('Website'));
-      row.url = websiteLink ? websiteLink.href : '';
-
       scrapedData.push(row);
     });
+    
     return scrapedData;
   } catch (error) {
     console.error('Error fetching data:', error);
@@ -124,5 +183,5 @@ export async function search(query) {
     }
   }
 
-  return [...new Set(fullList)];
+  return Array.from(new Map(fullList.map(item => [item.title + item.address, item])).values());
 }
