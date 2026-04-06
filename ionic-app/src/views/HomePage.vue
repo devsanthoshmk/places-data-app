@@ -218,6 +218,7 @@ import {
   IonChip, IonLabel, IonSelect, IonSelectOption,
   IonModal, IonList, IonItem,
   toastController,
+  alertController,
 } from '@ionic/vue';
 import {
   logoGithub, logoLinkedin, logoInstagram, shareSocialOutline,
@@ -226,6 +227,7 @@ import {
   arrowUpOutline, arrowDownOutline,
 } from 'ionicons/icons';
 import { Capacitor } from '@capacitor/core';
+import { App } from '@capacitor/app';
 import { LocalNotifications } from '@capacitor/local-notifications';
 import { search } from '../services/scraper.js';
 import { makeExcel, shareLastFile, SaveToDownloads } from '../services/excel.js';
@@ -329,7 +331,29 @@ export default {
           console.warn('Foreground service not available:', e);
         }
       }
+
+      // Handle hardware back button
+      App.addListener('backButton', async () => {
+        if (this.detailOpen) {
+          this.detailOpen = false;
+        } else if (this.view === 'results') {
+          this.newSearch();
+        } else {
+          const alert = await alertController.create({
+            header: 'Exit App',
+            message: 'Are you sure you want to exit the app?',
+            buttons: [
+              { text: 'Cancel', role: 'cancel' },
+              { text: 'Exit', handler: () => App.exitApp() },
+            ],
+          });
+          await alert.present();
+        }
+      });
     }
+  },
+  beforeUnmount() {
+    App.removeAllListeners();
   },
   methods: {
     toggleSortDir() {
