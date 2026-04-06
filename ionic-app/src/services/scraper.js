@@ -1,4 +1,3 @@
-import { JSDOM } from 'jsdom';
 import { parsePhoneNumberFromString } from 'libphonenumber-js';
 
 export function extractPhone(text) {
@@ -39,8 +38,8 @@ async function fetchit(url) {
     }
 
     const htmlText = await response.text();
-    const dom = new JSDOM(htmlText);
-    const doc = dom.window.document;
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(htmlText, 'text/html');
 
     const items = doc.querySelector('#search')?.querySelectorAll('.VkpGBb');
     if (!items) return []; 
